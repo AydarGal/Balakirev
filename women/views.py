@@ -1,3 +1,6 @@
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.http import HttpResponse, HttpResponseNotFound, Http404, HttpResponseRedirect, HttpResponsePermanentRedirect
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
@@ -42,25 +45,21 @@ class WomenHome(DataMixin, ListView):
     context_object_name = 'posts'
     title_page = 'Главная страница'
     cat_selected = 0
-    # extra_context = {
-    #     'title': 'Главная страница',
-    #     'menu': menu,
-    #     'cat_selected': 0,
-    # }
 
     def get_queryset(self):
         return Women.published.all().select_related('cat')
 
 
+@login_required
 def about(request):
-    if request.method == 'POST':
-        form = UploadFileForm(request.POST, request.FILES)
-        if form.is_valid():
-            fp = UploadFiles(file=form.cleaned_data['file'])
-            fp.save()
-    else:
-        form = UploadFileForm()
-    return render(request, 'women/about.html', {'title': 'О сайте', 'form': form})
+    contact_list = Women.published.all()
+    paginator = Paginator(contact_list, 3)
+
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'women/about.html',
+                  {'title': 'О сайте', 'page_obj': page_obj})
 
 
 class ShowPost(DataMixin, DetailView):
@@ -77,10 +76,15 @@ class ShowPost(DataMixin, DetailView):
         return get_object_or_404(Women.published, slug=self.kwargs[self.slug_url_kwarg])
 
 
-class AddPage(CreateView):
+class AddPage(LoginRequiredMixin, DataMixin, CreateView):
     form_class = AddPostForm  # Служит для указания класса формы
     template_name = 'women/addpage.html'
     title_page = 'Добавление статьи'
+
+    def form_valid(self, form):
+        w = form.save(commit=False)
+        w.author = self.request.user
+        return super().form_valid(form)
 
 
 class UpdatePage(UpdateView):
